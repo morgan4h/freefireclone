@@ -1,0 +1,96 @@
+[gd_scene format=3 uid="uid://bmqjrd3jkdysy"]
+
+[ext_resource type="Texture2D" uid="uid://bkyshrvb8g63e" path="res://Assets/ffa.png" id="1_p61cv"]
+[ext_resource type="AudioStream" uid="uid://bgleu7j0fg1vo" path="res://Assets/Gar.mp3" id="2_3e5ya"]
+[ext_resource type="PackedScene" uid="uid://d3l4trbj5gfs5" path="res://Assets/3d.glb" id="3_3uk7k"]
+
+[node name="HomePage" type="Control" unique_id=297388332]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="TextureRect" type="TextureRect" parent="." unique_id=981216451]
+layout_mode = 0
+offset_left = 1.0
+offset_right = 1161.0
+offset_bottom = 644.0
+texture = ExtResource("1_p61cv")
+expand_mode = 1
+
+[node name="Button" type="Button" parent="." unique_id=1838752734]
+layout_mode = 0
+offset_right = 226.0
+offset_bottom = 58.0
+text = "SOFAI 4H"
+
+[node name="Label" type="Label" parent="." unique_id=2140996067]
+layout_mode = 0
+offset_left = 25.0
+offset_top = 160.0
+offset_right = 127.0
+offset_bottom = 201.0
+text = "STORE"
+
+[node name="Label" type="Label" parent="Label" unique_id=1515090780]
+layout_mode = 0
+offset_left = -2.0
+offset_top = 47.0
+offset_right = 100.0
+offset_bottom = 88.0
+text = "LUCK ROYALE"
+
+[node name="Label" type="Label" parent="Label/Label" unique_id=1937903156]
+layout_mode = 0
+offset_left = -2.0
+offset_top = 56.0
+offset_right = 100.0
+offset_bottom = 97.0
+text = "vault"
+
+[node name="Label2" type="Label" parent="." unique_id=1291402981]
+layout_mode = 0
+offset_left = 257.0
+offset_top = 12.0
+offset_right = 380.0
+offset_bottom = 58.0
+text = "9999 COIN"
+
+[node name="Label2" type="Label" parent="Label2" unique_id=70366732]
+layout_mode = 0
+offset_left = 121.0
+offset_right = 244.0
+offset_bottom = 46.0
+text = "9999 DAIMOND"
+
+[node name="Button2" type="Button" parent="." unique_id=1725035103]
+layout_mode = 0
+offset_left = 919.0
+offset_top = 512.0
+offset_right = 1143.0
+offset_bottom = 574.0
+text = "LET CAT"
+
+[node name="Button3" type="Button" parent="." unique_id=180328034]
+layout_mode = 0
+offset_left = 38.0
+offset_top = 518.0
+offset_right = 173.0
+offset_bottom = 561.0
+text = "MESSAGES"
+
+[node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="." unique_id=39658675]
+stream = ExtResource("2_3e5ya")
+autoplay = true
+
+[node name="char" type="SubViewport" parent="." unique_id=977689188]
+transparent_bg = true
+
+[node name="World3d" type="Node3D" parent="char" unique_id=1743711813]
+
+[node name="Camera3D" type="Camera3D" parent="char/World3d" unique_id=841878139]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="char/World3d" unique_id=1041249501]
+layers = 2
+
+[node name="3d" parent="char/World3d" unique_id=1308350667 instance=ExtResource("3_3uk7k")]
