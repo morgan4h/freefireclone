@@ -1,6 +1,6 @@
 extends Button
 
-const NEXT_SCENE_PATH = "res://scenes/home_page.tscn"
+const NEXT_SCENE_PATH = "res://scenes/Lobby.tscn"
 @onready var audio_player: AudioStreamPlayer2D = $"../StartSound"
 
 func _ready() -> void:
