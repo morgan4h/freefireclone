@@ -3,7 +3,7 @@ sofai 4h clone free fire — a Garena Free Fire style battle royale prototype bu
 
 ## What's in it
 
-**Flow:** Splash logo → animated loader → callsign login → lobby → match → results → lobby.
+**Flow:** Player profile and cat preview → lobby → match → results → lobby. The profile screen opens directly so startup does not replay multiple loading screens.
 
 **Lobby (Free Fire style):**
 - Persistent profile: username, level + XP bar, coins and diamonds
@@ -40,6 +40,8 @@ sofai 4h clone free fire — a Garena Free Fire style battle royale prototype bu
 - `R` — reload
 - `E` — open nearby supply crate / interact
 - `Esc` — release / recapture the mouse
+
+On Android, use the on-screen joystick and touch buttons for movement, camera look, fire, aim, sprint, jump / drop, reload, weapon swap, crate interaction, and Gloo Walls.
 
 ## Project layout
 

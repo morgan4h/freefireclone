@@ -1,37 +1,95 @@
 extends Control
-# SOFAI 4H Lobby — dark hangar / purple-neon identity.
-# Background: ffa.png (the garage/stadium art). Purple primary, cyan secondary, amber accent.
+# SOFAI 4H — Free Fire Battle Royale Lobby
+# Authentic Free Fire layout inspired by reference screenshots:
+# Center 3D stage with 3D Cat Operative & Cat Pet, Left Free Fire icon drawer
+# (STORE, LUCK ROYALE, CHARACTER, VAULT, PET, WEAPON), Weapon Loadout wall,
+# Top currency banner (Coins & Diamonds), and Bottom-Right Golden START button.
 
-const BG_ART  = preload("res://Assets/ffa.png")   # hangar + stadium art
+const BG_ART = preload("res://Assets/ffa.png")
+const BGM    = preload("res://Assets/Gar.mp3")
+const SFX    = preload("res://Assets/Start.mp3")
 
 var mode := "br"
-var preview_root: Node3D
+var preview_viewport: SubViewport
+var preview_container: SubViewportContainer
+var preview_stage: Node3D
+var char_instance: Node3D
+var pet_instance: Node3D
+var preview_dragging := false
+var character_yaw := PI
+const PREVIEW_DRAG_SENSITIVITY := 0.012
+const PREVIEW_KEY_TURN := PI / 12.0
+
 var toast: Label
 var toast_timer := 0.0
-var mode_cards: Dictionary = {}
+
+# UI Controls
 var username_label: Label
+var avatar_label: Label
 var level_label: Label
 var xp_bar: ProgressBar
 var coins_label: Label
 var diamonds_label: Label
+var mode_label: Label
+var mode_sub_label: Label
+var char_panel: PanelContainer
+var weapon_panel: PanelContainer
+var nav_buttons: Dictionary = {}
+var character_buttons: Dictionary = {}
+var weapon_buttons: Dictionary = {}
+var bgm_player: AudioStreamPlayer
+var sfx_player: AudioStreamPlayer
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	theme = ThemeManager.theme
+
+	_setup_audio()
 	_build_background()
 	_build_topbar()
-	_build_preview()
-	_build_left_nav()
-	_build_right_nav()
-	_build_mode_selector()
-	_build_start_button()
+	_build_3d_showcase()
+	_build_left_freefire_menu()
+	_build_character_drawer()
+	_build_weapon_drawer()
+	_build_bottom_start_area()
 	_build_toast()
 	_refresh_profile()
-	_select_mode("br")
+	_update_mode_ui()
+
+func _setup_audio() -> void:
+	bgm_player = AudioStreamPlayer.new()
+	bgm_player.stream = BGM
+	bgm_player.volume_db = -8.0
+	bgm_player.autoplay = true
+	add_child(bgm_player)
+
+	sfx_player = AudioStreamPlayer.new()
+	sfx_player.stream = SFX
+	add_child(sfx_player)
 
 func _process(delta: float) -> void:
-	if preview_root:
-		preview_root.rotate_y(delta * 0.55)
+	var turn_axis := 0.0
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		turn_axis += 1.0
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		turn_axis -= 1.0
+	if turn_axis != 0.0:
+		_rotate_character(turn_axis * delta * 1.8)
+
+	# Tail wagging and breathing
+	if char_instance:
+		var tail = char_instance.get_node_or_null("Torso/TailRoot")
+		if tail:
+			tail.rotation_degrees.y = sin(Time.get_ticks_msec() * 0.003) * 16.0
+		var torso = char_instance.get_node_or_null("Torso")
+		if torso:
+			torso.position.y = 0.92 + sin(Time.get_ticks_msec() * 0.0025) * 0.012
+
+	if pet_instance:
+		var ptail = pet_instance.get_node_or_null("PetTail")
+		if ptail:
+			ptail.rotation_degrees.z = sin(Time.get_ticks_msec() * 0.005) * 24.0
+
 	if toast_timer > 0.0:
 		toast_timer -= delta
 		if toast_timer <= 0.0:
@@ -39,100 +97,130 @@ func _process(delta: float) -> void:
 		elif toast_timer < 0.5:
 			toast.modulate.a = toast_timer / 0.5
 
-# ============================ Background ============================
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and preview_dragging:
+		_rotate_character(-event.relative.x * PREVIEW_DRAG_SENSITIVITY)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		preview_dragging = false
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not event is InputEventKey or not event.pressed or event.echo:
+		return
+	match event.physical_keycode:
+		KEY_LEFT, KEY_A:
+			_rotate_character(PREVIEW_KEY_TURN)
+		KEY_RIGHT, KEY_D:
+			_rotate_character(-PREVIEW_KEY_TURN)
+
+func _rotate_character(amount: float) -> void:
+	if not char_instance or not is_instance_valid(char_instance):
+		return
+	character_yaw = wrapf(character_yaw + amount, -PI, PI)
+	char_instance.rotation.y = character_yaw
+
+func _on_preview_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		preview_dragging = event.pressed
+
+func _turn_preview_step(direction: float) -> void:
+	_rotate_character(direction * PREVIEW_KEY_TURN)
+	SFXSynthesizer.play_sound(self, "click", -8.0)
+
+# ============================ Background Art ============================
 func _build_background() -> void:
-	# Base dark fill
 	var base := ColorRect.new()
 	base.set_anchors_preset(Control.PRESET_FULL_RECT)
 	base.color = ThemeManager.COL_BG
 	add_child(base)
 
-	# Background art — the garage/stadium image
 	var art := TextureRect.new()
 	art.set_anchors_preset(Control.PRESET_FULL_RECT)
 	art.texture = BG_ART
 	art.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	art.modulate.a = 0.55          # subtle — UI stays readable
+	art.modulate.a = 0.60
 	add_child(art)
 
-	# Dark-to-transparent gradient overlay (top darker, center more open)
-	var top_dim := ColorRect.new()
-	top_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	top_dim.color = Color(ThemeManager.COL_BG.r, ThemeManager.COL_BG.g, ThemeManager.COL_BG.b, 0.52)
-	add_child(top_dim)
+	var dim := ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(ThemeManager.COL_BG.r, ThemeManager.COL_BG.g, ThemeManager.COL_BG.b, 0.40)
+	add_child(dim)
 
-	# Purple neon accent strip at the very top
-	var strip := ColorRect.new()
-	strip.anchor_left   = 0.0; strip.anchor_top    = 0.0
-	strip.anchor_right  = 1.0; strip.anchor_bottom = 0.0
-	strip.offset_top    = 0;   strip.offset_bottom = 3
-	strip.color = ThemeManager.COL_PURPLE
-	add_child(strip)
+	var top_strip := ColorRect.new()
+	top_strip.anchor_left = 0.0; top_strip.anchor_top = 0.0
+	top_strip.anchor_right = 1.0; top_strip.anchor_bottom = 0.0
+	top_strip.offset_bottom = 3
+	top_strip.color = ThemeManager.COL_PURPLE
+	add_child(top_strip)
 
-	# Amber accent strip at the very bottom
-	var bstrip := ColorRect.new()
-	bstrip.anchor_left   = 0.0; bstrip.anchor_top    = 1.0
-	bstrip.anchor_right  = 1.0; bstrip.anchor_bottom = 1.0
-	bstrip.offset_top    = -3;  bstrip.offset_bottom = 0
-	bstrip.color = ThemeManager.COL_AMBER
-	add_child(bstrip)
+	var bot_strip := ColorRect.new()
+	bot_strip.anchor_left = 0.0; bot_strip.anchor_top = 1.0
+	bot_strip.anchor_right = 1.0; bot_strip.anchor_bottom = 1.0
+	bot_strip.offset_top = -3
+	bot_strip.color = ThemeManager.COL_PURPLE_2
+	add_child(bot_strip)
 
-# ============================ Top bar ============================
+# ============================ Free Fire Top Bar ============================
 func _build_topbar() -> void:
+	var shell := PanelContainer.new()
+	shell.anchor_left = 0.0; shell.anchor_top = 0.0
+	shell.anchor_right = 1.0; shell.anchor_bottom = 0.0
+	shell.offset_left = 18; shell.offset_top = 12
+	shell.offset_right = -18; shell.offset_bottom = 82
+	shell.add_theme_stylebox_override("panel", ThemeManager.card_stylebox(16, 0.92))
+	shell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(shell)
+
 	var bar := HBoxContainer.new()
-	bar.anchor_left   = 0.0; bar.anchor_top    = 0.0
-	bar.anchor_right  = 1.0; bar.anchor_bottom = 0.0
-	bar.offset_left   = 20;  bar.offset_top    = 12
-	bar.offset_right  = -20; bar.offset_bottom = 80
+	bar.custom_minimum_size = Vector2(0, 62)
 	bar.add_theme_constant_override("separation", 14)
-	add_child(bar)
+	shell.add_child(bar)
 
 	# Avatar badge
 	var avatar := PanelContainer.new()
-	avatar.custom_minimum_size = Vector2(52, 52)
+	avatar.custom_minimum_size = Vector2(54, 54)
 	var asb := StyleBoxFlat.new()
 	asb.bg_color = ThemeManager.COL_PURPLE
-	asb.set_corner_radius_all(26)
-	asb.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g,
-			ThemeManager.COL_PURPLE.b, 0.6)
-	asb.shadow_size = 10
+	asb.border_color = ThemeManager.COL_PURPLE_2
+	asb.set_border_width_all(1)
+	asb.set_corner_radius_all(6)
+	asb.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g, ThemeManager.COL_PURPLE.b, 0.6)
+	asb.shadow_size = 8
 	avatar.add_theme_stylebox_override("panel", asb)
-	var init_lbl := Label.new()
-	init_lbl.text = PlayerData.username.substr(0, 1).to_upper() if PlayerData.username.length() > 0 else "?"
-	init_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	init_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	init_lbl.add_theme_font_size_override("font_size", 24)
-	init_lbl.add_theme_color_override("font_color", ThemeManager.COL_DARK)
-	avatar.add_child(init_lbl)
+	avatar_label = Label.new()
+	avatar_label.text = "S"
+	avatar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	avatar_label.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	avatar_label.add_theme_font_size_override("font_size", 24)
+	avatar_label.add_theme_color_override("font_color", ThemeManager.COL_TEXT)
+	avatar.add_child(avatar_label)
 	bar.add_child(avatar)
 
-	# Profile text stack
+	# Profile Info
 	var prof := VBoxContainer.new()
-	prof.add_theme_constant_override("separation", 3)
+	prof.add_theme_constant_override("separation", 2)
 	prof.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	username_label = Label.new()
-	username_label.add_theme_font_size_override("font_size", 20)
+	username_label.add_theme_font_size_override("font_size", 19)
 	username_label.add_theme_color_override("font_color", ThemeManager.COL_TEXT)
 	prof.add_child(username_label)
+
 	var lvl_row := HBoxContainer.new()
-	lvl_row.add_theme_constant_override("separation", 10)
+	lvl_row.add_theme_constant_override("separation", 8)
 	level_label = Label.new()
 	level_label.add_theme_color_override("font_color", ThemeManager.COL_PURPLE_2)
-	level_label.add_theme_font_size_override("font_size", 15)
+	level_label.add_theme_font_size_override("font_size", 14)
 	lvl_row.add_child(level_label)
+
 	xp_bar = ProgressBar.new()
 	xp_bar.min_value = 0.0
 	xp_bar.max_value = 100.0
-	xp_bar.custom_minimum_size = Vector2(150, 8)
+	xp_bar.custom_minimum_size = Vector2(140, 7)
 	xp_bar.show_percentage = false
 	xp_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var xf := StyleBoxFlat.new()
 	xf.bg_color = ThemeManager.COL_PURPLE
 	xf.set_corner_radius_all(4)
-	xf.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g,
-			ThemeManager.COL_PURPLE.b, 0.5)
-	xf.shadow_size = 5
 	var xbg := StyleBoxFlat.new()
 	xbg.bg_color = ThemeManager.COL_PANEL_2
 	xbg.set_corner_radius_all(4)
@@ -146,39 +234,42 @@ func _build_topbar() -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(spacer)
 
-	# Currency pills
-	bar.add_child(_currency_pill(ThemeManager.COL_AMBER, "coins"))
-	bar.add_child(_currency_pill(ThemeManager.COL_CYAN,  "diamonds"))
+	# Currency Badges (Coins & Diamonds)
+	bar.add_child(_currency_pill(ThemeManager.COL_AMBER, "coins", "🪙"))
+	bar.add_child(_currency_pill(ThemeManager.COL_CYAN,  "diamonds", "💎"))
 
-	# Settings
 	var gear := Button.new()
 	gear.text = "⚙"
-	gear.custom_minimum_size = Vector2(48, 48)
-	gear.add_theme_font_size_override("font_size", 22)
+	gear.custom_minimum_size = Vector2(44, 44)
+	gear.add_theme_font_size_override("font_size", 20)
 	ThemeManager.ghost_button(gear)
 	gear.pressed.connect(_nav_toast.bind("Settings"))
 	bar.add_child(gear)
 
-func _currency_pill(color: Color, key: String) -> Control:
+func _currency_pill(color: Color, key: String, icon: String) -> Control:
 	var pill := PanelContainer.new()
-	var psb := ThemeManager.card_stylebox(20, 0.90)
-	pill.add_theme_stylebox_override("panel", psb)
+	pill.add_theme_stylebox_override("panel", ThemeManager.card_stylebox(18, 0.92))
+	pill.custom_minimum_size = Vector2(94 if key == "coins" else 112, 50)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 0)
+	pill.add_child(col)
+	var title := Label.new()
+	title.text = "COINS" if key == "coins" else "DIAMONDS"
+	title.add_theme_font_size_override("font_size", 9)
+	title.add_theme_color_override("font_color", ThemeManager.COL_TEXT_DIM)
+	col.add_child(title)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	var dot := Panel.new()
-	dot.custom_minimum_size = Vector2(16, 16)
-	var dsb := StyleBoxFlat.new()
-	dsb.bg_color = color
-	dsb.set_corner_radius_all(8)
-	dsb.shadow_color = Color(color.r, color.g, color.b, 0.5)
-	dsb.shadow_size = 5
-	dot.add_theme_stylebox_override("panel", dsb)
-	row.add_child(dot)
+	row.add_theme_constant_override("separation", 5)
+	var ic := Label.new()
+	ic.text = icon
+	ic.add_theme_font_size_override("font_size", 14)
+	ic.add_theme_color_override("font_color", color)
+	row.add_child(ic)
 	var lbl := Label.new()
 	lbl.add_theme_font_size_override("font_size", 16)
 	lbl.add_theme_color_override("font_color", ThemeManager.COL_TEXT)
 	row.add_child(lbl)
-	pill.add_child(row)
+	col.add_child(row)
 	if key == "coins":
 		coins_label = lbl
 	else:
@@ -186,281 +277,418 @@ func _currency_pill(color: Color, key: String) -> Control:
 	return pill
 
 func _refresh_profile() -> void:
-	if username_label: username_label.text = PlayerData.username
+	if username_label:
+		username_label.text = PlayerData.username.left(16)
+		username_label.tooltip_text = PlayerData.username
+	if avatar_label:
+		avatar_label.text = PlayerData.username.substr(0, 1).to_upper() if not PlayerData.username.is_empty() else "S"
 	if level_label:    level_label.text    = "Lv. %d" % PlayerData.level
 	if xp_bar:         xp_bar.value        = PlayerData.xp_progress() * 100.0
 	if coins_label:    coins_label.text    = str(PlayerData.coins)
 	if diamonds_label: diamonds_label.text = str(PlayerData.diamonds)
 
-# ============================ Character preview ============================
-func _build_preview() -> void:
-	var container := SubViewportContainer.new()
-	container.set_anchors_preset(Control.PRESET_CENTER)
-	container.offset_left   = -200
-	container.offset_right  =  200
-	container.offset_top    = -260
-	container.offset_bottom =  200
-	container.stretch = true
-	add_child(container)
+# ============================ 3D Pedestal Showcase ============================
+func _build_3d_showcase() -> void:
+	preview_container = SubViewportContainer.new()
+	preview_container.set_anchors_preset(Control.PRESET_CENTER)
+	preview_container.offset_left   = -270
+	preview_container.offset_right  =  270
+	preview_container.offset_top    = -230
+	preview_container.offset_bottom =  190
+	preview_container.stretch = true
+	preview_container.mouse_default_cursor_shape = Control.CURSOR_MOVE
+	preview_container.gui_input.connect(_on_preview_gui_input)
+	add_child(preview_container)
 
-	var vp := SubViewport.new()
-	vp.transparent_bg = true
-	vp.size = Vector2i(400, 460)
-	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	container.add_child(vp)
+	preview_viewport = SubViewport.new()
+	preview_viewport.transparent_bg = true
+	preview_viewport.size = Vector2i(540, 420)
+	preview_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	preview_container.add_child(preview_viewport)
 
 	var world := Node3D.new()
-	vp.add_child(world)
+	preview_viewport.add_child(world)
 
 	var cam := Camera3D.new()
-	cam.position = Vector3(0, 1.7, 5.5)
-	cam.fov = 36
+	cam.position = Vector3(0, 1.45, 4.4)
+	cam.fov = 34
 	cam.current = true
 	world.add_child(cam)
 
 	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-48, -30, 0)
-	light.position = Vector3(0.5, 4.0, 3.0)
-	light.light_energy = 1.1
+	light.rotation_degrees = Vector3(-42, -28, 0)
+	light.light_energy = 1.2
 	world.add_child(light)
 
-	# Purple fill light from the left (neon hangar feel)
 	var fill := OmniLight3D.new()
-	fill.position = Vector3(-3, 2, 2)
+	fill.position = Vector3(-2.8, 1.8, 1.8)
 	fill.light_color = ThemeManager.COL_PURPLE
-	fill.light_energy = 1.8
-	fill.omni_range = 12.0
+	fill.light_energy = 2.0
+	fill.omni_range = 10.0
 	world.add_child(fill)
 
-	# Cyan rim from behind-right
 	var rim := OmniLight3D.new()
-	rim.position = Vector3(2, 1.5, -2)
+	rim.position = Vector3(2.5, 1.6, -2.0)
 	rim.light_color = ThemeManager.COL_CYAN
-	rim.light_energy = 1.2
-	rim.omni_range = 10.0
+	rim.light_energy = 1.6
+	rim.omni_range = 8.0
 	world.add_child(rim)
 
 	var env_node := WorldEnvironment.new()
 	var env := Environment.new()
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.25, 0.18, 0.40)
-	env.ambient_light_energy = 0.6
+	env.ambient_light_color = Color(0.24, 0.18, 0.36)
+	env.ambient_light_energy = 0.65
 	env_node.environment = env
 	world.add_child(env_node)
 
-	preview_root = Node3D.new()
-	world.add_child(preview_root)
+	preview_stage = Node3D.new()
+	world.add_child(preview_stage)
 
-	# Body — purple suit matching the cat-girl aesthetic
-	var body := MeshInstance3D.new()
-	var bm := CapsuleMesh.new()
-	bm.radius = 0.42
-	bm.height = 1.25
-	body.mesh = bm
-	var bmat := StandardMaterial3D.new()
-	bmat.albedo_color = ThemeManager.COL_PURPLE
-	bmat.emission_enabled = true
-	bmat.emission = ThemeManager.COL_PURPLE
-	bmat.emission_energy_multiplier = 0.15
-	body.material_override = bmat
-	body.position.y = 0.9
-	preview_root.add_child(body)
+	pet_instance = CatCharacterBuilder.build_cat_pet()
+	pet_instance.position = Vector3(-0.72, 0.0, 0.28)
+	pet_instance.rotation_degrees.y = 215.0
+	preview_stage.add_child(pet_instance)
 
-	# Head
-	var head := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.28
-	head.mesh = hm
-	var hmat := StandardMaterial3D.new()
-	hmat.albedo_color = Color(0.95, 0.78, 0.62)
-	head.material_override = hmat
-	head.position.y = 1.76
-	preview_root.add_child(head)
+	_refresh_3d_operative()
+	_build_preview_controls()
 
-	# Cat ears (two small cones as spheres sitting above the head)
-	for side in [-1, 1]:
-		var ear := MeshInstance3D.new()
-		var em := SphereMesh.new()
-		em.radius = 0.11
-		em.height = 0.22
-		ear.mesh = em
-		var emat := StandardMaterial3D.new()
-		emat.albedo_color = ThemeManager.COL_PURPLE
-		emat.emission_enabled = true
-		emat.emission = ThemeManager.COL_PURPLE
-		emat.emission_energy_multiplier = 0.3
-		ear.material_override = emat
-		ear.position = Vector3(side * 0.22, 2.08, 0.0)
-		preview_root.add_child(ear)
+func _build_preview_controls() -> void:
+	var dock := PanelContainer.new()
+	dock.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	dock.offset_left = -166
+	dock.offset_top = -178
+	dock.offset_right = 166
+	dock.offset_bottom = -126
+	dock.add_theme_stylebox_override("panel", ThemeManager.card_stylebox(18, 0.95))
+	dock.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(dock)
 
-	# Weapon
-	var gun := MeshInstance3D.new()
-	var gm := BoxMesh.new()
-	gm.size = Vector3(0.12, 0.17, 0.68)
-	gun.mesh = gm
-	var gmat := StandardMaterial3D.new()
-	gmat.albedo_color = Color(0.14, 0.11, 0.20)
-	gmat.emission_enabled = true
-	gmat.emission = ThemeManager.COL_PURPLE
-	gmat.emission_energy_multiplier = 0.25
-	gun.material_override = gmat
-	gun.position = Vector3(0.30, 1.12, -0.34)
-	preview_root.add_child(gun)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 8)
+	dock.add_child(row)
 
-	# Ground ring — purple neon circle
-	var ring := MeshInstance3D.new()
-	var rm := TorusMesh.new()
-	rm.inner_radius = 0.56
-	rm.outer_radius = 0.70
-	ring.mesh = rm
-	ring.rotation.x = PI / 2.0
-	ring.position.y = 0.04
-	var rmat := StandardMaterial3D.new()
-	rmat.albedo_color = ThemeManager.COL_PURPLE
-	rmat.emission_enabled = true
-	rmat.emission = ThemeManager.COL_PURPLE
-	rmat.emission_energy_multiplier = 1.2
-	ring.material_override = rmat
-	preview_root.add_child(ring)
+	var left := Button.new()
+	left.text = "‹"
+	left.tooltip_text = "Turn character left (A or Left Arrow)"
+	left.custom_minimum_size = Vector2(38, 36)
+	left.add_theme_font_size_override("font_size", 22)
+	left.focus_mode = Control.FOCUS_NONE
+	ThemeManager.ghost_button(left)
+	left.pressed.connect(_turn_preview_step.bind(1.0))
+	row.add_child(left)
 
-# ============================ Navigation ============================
-func _build_left_nav() -> void:
+	var hint := Label.new()
+	hint.text = "DRAG TO TURN  ·  A/D OR ARROWS"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.add_theme_color_override("font_color", ThemeManager.COL_TEXT_DIM)
+	row.add_child(hint)
+
+	var right := Button.new()
+	right.text = "›"
+	right.tooltip_text = "Turn character right (D or Right Arrow)"
+	right.custom_minimum_size = Vector2(38, 36)
+	right.add_theme_font_size_override("font_size", 22)
+	right.focus_mode = Control.FOCUS_NONE
+	ThemeManager.ghost_button(right)
+	right.pressed.connect(_turn_preview_step.bind(-1.0))
+	row.add_child(right)
+
+func _refresh_3d_operative() -> void:
+	if char_instance and is_instance_valid(char_instance):
+		char_instance.queue_free()
+
+	char_instance = CatCharacterBuilder.build_cat_soldier(PlayerData.selected_character, PlayerData.selected_weapon)
+	char_instance.position = Vector3(0.08, 0.0, 0.0)
+	char_instance.rotation.y = character_yaw
+	preview_stage.add_child(char_instance)
+	_refresh_drawer_selection()
+
+# ============================ Left Free Fire Menu ============================
+func _build_left_freefire_menu() -> void:
 	var nav := VBoxContainer.new()
-	nav.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	nav.offset_left   = 20
-	nav.offset_right  = 174
-	nav.offset_top    = -150
-	nav.offset_bottom =  150
-	nav.add_theme_constant_override("separation", 10)
+	nav.anchor_left = 0.0; nav.anchor_top = 0.5
+	nav.anchor_right = 0.0; nav.anchor_bottom = 0.5
+	nav.offset_left = 20; nav.offset_top = -174
+	nav.offset_right = 180; nav.offset_bottom = 174
+	nav.add_theme_constant_override("separation", 7)
 	add_child(nav)
-	for lbl in ["STORE", "LUCK ROYALE", "VAULT", "CLAN"]:
-		var b := Button.new()
-		b.text = lbl
-		b.custom_minimum_size = Vector2(154, 44)
-		ThemeManager.ghost_button(b)
-		b.pressed.connect(_nav_toast.bind(lbl))
-		nav.add_child(b)
 
-func _build_right_nav() -> void:
-	var nav := VBoxContainer.new()
-	nav.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	nav.offset_left   = -174
-	nav.offset_right  = -20
-	nav.offset_top    = -150
-	nav.offset_bottom =  150
-	nav.add_theme_constant_override("separation", 10)
-	add_child(nav)
-	for lbl in ["FRIENDS", "MESSAGES", "PROFILE", "RANKED"]:
-		var b := Button.new()
-		b.text = lbl
-		b.custom_minimum_size = Vector2(154, 44)
-		ThemeManager.ghost_button(b)
-		b.pressed.connect(_nav_toast.bind(lbl))
-		nav.add_child(b)
+	var items = [
+		{"label": "STORE",       "icon": "🛒"},
+		{"label": "LUCK ROYALE", "icon": "🎰"},
+		{"label": "CHARACTER",   "icon": "🐱"},
+		{"label": "VAULT",       "icon": "🎒"},
+		{"label": "PET",         "icon": "🐾"},
+		{"label": "WEAPON",      "icon": "🔫"},
+	]
+
+	for it in items:
+		var btn := Button.new()
+		btn.text = "%s  %s" % [it["icon"], it["label"]]
+		btn.custom_minimum_size = Vector2(156, 46)
+		btn.add_theme_font_size_override("font_size", 13)
+		ThemeManager.ghost_button(btn)
+		nav_buttons[it["label"]] = btn
+
+		if it["label"] == "CHARACTER":
+			btn.pressed.connect(_toggle_character_drawer)
+		elif it["label"] == "WEAPON":
+			btn.pressed.connect(_toggle_weapon_drawer)
+		elif it["label"] == "PET":
+			btn.pressed.connect(func(): _toast("Kitty 4H Companion is Active on Stage!"))
+		else:
+			btn.pressed.connect(_nav_toast.bind(it["label"]))
+
+		nav.add_child(btn)
 
 func _nav_toast(label: String) -> void:
-	_toast(label + " — coming soon")
+	SFXSynthesizer.play_sound(self, "click", 0.0)
+	_toast(label + " — Active in current build")
 
-# ============================ Mode selector ============================
-func _build_mode_selector() -> void:
-	var row := HBoxContainer.new()
-	row.anchor_left   = 0.0; row.anchor_top    = 1.0
-	row.anchor_right  = 1.0; row.anchor_bottom = 1.0
-	row.offset_left   = 220; row.offset_top    = -122
-	row.offset_right  = -300; row.offset_bottom = -28
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 20)
-	add_child(row)
-	row.add_child(_mode_card("br",    "BATTLE ROYALE",  "50 players · last one standing"))
-	row.add_child(_mode_card("clash", "CLASH SQUAD",    "10 players · fast skirmish"))
+# ============================ Character & Weapon Drawers ============================
+func _build_character_drawer() -> void:
+	char_panel = PanelContainer.new()
+	char_panel.anchor_left = 0.0; char_panel.anchor_top = 0.5
+	char_panel.anchor_right = 0.0; char_panel.anchor_bottom = 0.5
+	char_panel.offset_left = 175; char_panel.offset_top = -130
+	char_panel.offset_right = 360; char_panel.offset_bottom = 110
+	char_panel.add_theme_stylebox_override("panel", ThemeManager.panel_stylebox(14, 0.95))
+	add_child(char_panel)
+	char_panel.visible = false
 
-func _mode_card(key: String, title: String, sub: String) -> Control:
-	var card := Button.new()
-	card.custom_minimum_size = Vector2(230, 94)
-	card.text = ""
-	ThemeManager.ghost_button(card)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 3)
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var t := Label.new()
-	t.text = title
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	t.add_theme_font_size_override("font_size", 18)
-	t.add_theme_color_override("font_color", ThemeManager.COL_TEXT)
-	var s := Label.new()
-	s.text = sub
-	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	s.add_theme_font_size_override("font_size", 12)
-	s.add_theme_color_override("font_color", ThemeManager.COL_TEXT_DIM)
-	col.add_child(t)
-	col.add_child(s)
-	card.add_child(col)
-	card.pressed.connect(_select_mode.bind(key))
-	mode_cards[key] = card
-	return card
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	char_panel.add_child(vbox)
 
-func _select_mode(key: String) -> void:
-	mode = key
-	for k in mode_cards.keys():
-		var c: Button = mode_cards[k]
-		var sel := String(k) == key
-		var sb := StyleBoxFlat.new()
-		if sel:
-			sb.bg_color     = Color(0.22, 0.14, 0.38, 0.95)
-			sb.border_color = ThemeManager.COL_PURPLE
-			sb.set_border_width_all(2)
-			sb.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g,
-					ThemeManager.COL_PURPLE.b, 0.5)
-			sb.shadow_size = 8
-		else:
-			sb.bg_color     = Color(0.102, 0.078, 0.161, 0.88)
-			sb.border_color = ThemeManager.COL_DIVIDER
-			sb.set_border_width_all(1)
-		sb.set_corner_radius_all(10)
-		sb.set_content_margin_all(14)
-		c.add_theme_stylebox_override("normal", sb)
-		c.add_theme_stylebox_override("hover",  sb)
+	var header := Label.new()
+	header.text = "SELECT CAT OPERATIVE"
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.add_theme_font_size_override("font_size", 13)
+	header.add_theme_color_override("font_color", ThemeManager.COL_PURPLE_2)
+	vbox.add_child(header)
 
-# ============================ Start button ============================
-func _build_start_button() -> void:
+	var characters = [
+		{"key": "purple", "name": "SOFAI", "sub": "Neon Shadow (Purple)"},
+		{"key": "red",    "name": "CRIMSON", "sub": "Fire Claw (Red)"},
+		{"key": "blue",   "name": "COBALT", "sub": "Ghost Hunter (Blue)"}
+	]
+
+	for c in characters:
+		var btn := Button.new()
+		btn.text = "%s\n%s" % [c["name"], c["sub"]]
+		btn.custom_minimum_size = Vector2(0, 48)
+		btn.add_theme_font_size_override("font_size", 13)
+		ThemeManager.ghost_button(btn)
+		btn.set_meta("base_text", btn.text)
+		character_buttons[c["key"]] = btn
+		btn.pressed.connect(_select_character.bind(c["key"]))
+		vbox.add_child(btn)
+	_refresh_drawer_selection()
+
+func _toggle_character_drawer() -> void:
+	char_panel.visible = not char_panel.visible
+	if char_panel.visible and weapon_panel:
+		weapon_panel.visible = false
+	_update_nav_selection()
+	SFXSynthesizer.play_sound(self, "click", -8.0)
+
+func _select_character(key: String) -> void:
+	PlayerData.selected_character = key
+	PlayerData.save_data()
+	SFXSynthesizer.play_sound(self, "click", 2.0)
+	_refresh_3d_operative()
+	_refresh_drawer_selection()
+	_toast("Equipped " + CatCharacterBuilder.HERO_SKINS[key]["name"])
+
+func _build_weapon_drawer() -> void:
+	weapon_panel = PanelContainer.new()
+	weapon_panel.anchor_left = 1.0; weapon_panel.anchor_top = 0.5
+	weapon_panel.anchor_right = 1.0; weapon_panel.anchor_bottom = 0.5
+	weapon_panel.offset_left = -220; weapon_panel.offset_top = -140
+	weapon_panel.offset_right = -20; weapon_panel.offset_bottom = 120
+	weapon_panel.add_theme_stylebox_override("panel", ThemeManager.panel_stylebox(14, 0.95))
+	add_child(weapon_panel)
+	weapon_panel.visible = false
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	weapon_panel.add_child(vbox)
+
+	var header := Label.new()
+	header.text = "WEAPON SHOWCASE"
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.add_theme_font_size_override("font_size", 13)
+	header.add_theme_color_override("font_color", ThemeManager.COL_PURPLE_2)
+	vbox.add_child(header)
+
+	var weapons = [
+		{"key": "ak47",  "name": "AK47",  "desc": "Assault Rifle"},
+		{"key": "mp40",  "name": "MP40",  "desc": "Submachine Gun"},
+		{"key": "awm",   "name": "AWM",   "desc": "Sniper Rifle"},
+		{"key": "m1887", "name": "M1887", "desc": "Double Shotgun"}
+	]
+
+	for w in weapons:
+		var btn := Button.new()
+		btn.text = "%s  —  %s" % [w["name"], w["desc"]]
+		btn.custom_minimum_size = Vector2(0, 42)
+		btn.add_theme_font_size_override("font_size", 12)
+		ThemeManager.ghost_button(btn)
+		btn.set_meta("base_text", btn.text)
+		weapon_buttons[w["key"]] = btn
+		btn.pressed.connect(_select_weapon.bind(w["key"]))
+		vbox.add_child(btn)
+	_refresh_drawer_selection()
+
+func _toggle_weapon_drawer() -> void:
+	weapon_panel.visible = not weapon_panel.visible
+	if weapon_panel.visible and char_panel:
+		char_panel.visible = false
+	_update_nav_selection()
+	SFXSynthesizer.play_sound(self, "click", -8.0)
+
+func _select_weapon(key: String) -> void:
+	PlayerData.selected_weapon = key
+	PlayerData.save_data()
+	SFXSynthesizer.play_sound(self, key, 0.0)
+	_refresh_3d_operative()
+	_refresh_drawer_selection()
+	_toast("Equipped " + key.to_upper())
+
+func _refresh_drawer_selection() -> void:
+	for key in character_buttons:
+		var btn: Button = character_buttons[key]
+		var selected: bool = key == PlayerData.selected_character
+		btn.text = ("✓  " if selected else "") + str(btn.get_meta("base_text"))
+		_set_button_selected_style(btn, selected)
+	for key in weapon_buttons:
+		var btn: Button = weapon_buttons[key]
+		var selected: bool = key == PlayerData.selected_weapon
+		btn.text = ("✓  " if selected else "") + str(btn.get_meta("base_text"))
+		_set_button_selected_style(btn, selected)
+
+func _update_nav_selection() -> void:
+	if nav_buttons.has("CHARACTER"):
+		_set_button_selected_style(nav_buttons["CHARACTER"], char_panel.visible)
+	if nav_buttons.has("WEAPON"):
+		_set_button_selected_style(nav_buttons["WEAPON"], weapon_panel.visible)
+
+func _set_button_selected_style(button: Button, selected: bool) -> void:
+	if not selected:
+		ThemeManager.ghost_button(button)
+		return
+	var active := StyleBoxFlat.new()
+	active.bg_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g, ThemeManager.COL_PURPLE.b, 0.30)
+	active.border_color = ThemeManager.COL_PURPLE
+	active.set_border_width_all(1)
+	active.set_corner_radius_all(10)
+	active.set_content_margin_all(10)
+	active.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g, ThemeManager.COL_PURPLE.b, 0.32)
+	active.shadow_size = 7
+	button.add_theme_stylebox_override("normal", active)
+
+# ============================ Bottom Mode & Golden START Button ============================
+func _build_bottom_start_area() -> void:
+	# Mode Selection Card (Bottom-Right, adjacent to START)
+	var mode_card := Button.new()
+	mode_card.anchor_left = 1.0; mode_card.anchor_top = 1.0
+	mode_card.anchor_right = 1.0; mode_card.anchor_bottom = 1.0
+	mode_card.offset_left = -530; mode_card.offset_top = -106
+	mode_card.offset_right = -270; mode_card.offset_bottom = -26
+	mode_card.tooltip_text = "Click to switch between Battle Royale and Clash Squad"
+	ThemeManager.ghost_button(mode_card)
+
+	var mv := VBoxContainer.new()
+	mv.alignment = BoxContainer.ALIGNMENT_CENTER
+	mv.add_theme_constant_override("separation", 2)
+	mv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	mode_label = Label.new()
+	mode_label.text = "BATTLE ROYALE"
+	mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mode_label.add_theme_font_size_override("font_size", 17)
+	mode_label.add_theme_color_override("font_color", ThemeManager.COL_PURPLE_2)
+
+	mode_sub_label = Label.new()
+	mode_sub_label.text = "Bermuda Island (Plane Drop)"
+	mode_sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mode_sub_label.add_theme_font_size_override("font_size", 11)
+	mode_sub_label.add_theme_color_override("font_color", ThemeManager.COL_TEXT_DIM)
+
+	mv.add_child(mode_label)
+	mv.add_child(mode_sub_label)
+	mode_card.add_child(mv)
+	mode_card.pressed.connect(_toggle_mode)
+	add_child(mode_card)
+
+	# Golden Free Fire START Button (Like reference images 1, 2, 5!)
 	var start := Button.new()
-	start.anchor_left   = 1.0; start.anchor_top    = 1.0
-	start.anchor_right  = 1.0; start.anchor_bottom = 1.0
-	start.offset_left   = -270; start.offset_top    = -106
-	start.offset_right  = -24;  start.offset_bottom = -28
-	start.text = "DROP IN"
-	start.add_theme_font_size_override("font_size", 26)
-	# Override with a bigger purple neon button
+	start.anchor_left = 1.0; start.anchor_top = 1.0
+	start.anchor_right = 1.0; start.anchor_bottom = 1.0
+	start.offset_left = -250; start.offset_top = -112
+	start.offset_right = -20;  start.offset_bottom = -22
+	start.text = "▶  START"
+	start.add_theme_font_size_override("font_size", 30)
+	start.tooltip_text = "Start the selected game mode"
+
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = ThemeManager.COL_PURPLE
-	sb.set_corner_radius_all(10)
-	sb.set_content_margin_all(16)
-	sb.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g,
-			ThemeManager.COL_PURPLE.b, 0.75)
-	sb.shadow_size = 14
-	sb.shadow_offset = Vector2(0, 4)
+	sb.border_color = ThemeManager.COL_PURPLE_2
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(12)
+	sb.set_content_margin_all(14)
+	sb.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g, ThemeManager.COL_PURPLE.b, 0.75)
+	sb.shadow_size = 16
+	sb.shadow_offset = Vector2(0, 3)
+
 	var sbh := StyleBoxFlat.new()
 	sbh.bg_color = ThemeManager.COL_PURPLE_2
+	sbh.border_color = ThemeManager.COL_TEXT
+	sbh.set_border_width_all(1)
 	sbh.set_corner_radius_all(10)
-	sbh.set_content_margin_all(16)
-	sbh.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g,
-			ThemeManager.COL_PURPLE.b, 0.9)
+	sbh.set_content_margin_all(14)
+	sbh.shadow_color = Color(ThemeManager.COL_PURPLE.r, ThemeManager.COL_PURPLE.g, ThemeManager.COL_PURPLE.b, 0.95)
 	sbh.shadow_size = 18
+	var sbp := StyleBoxFlat.new()
+	sbp.bg_color = ThemeManager.COL_PURPLE_DK
+	sbp.border_color = ThemeManager.COL_PURPLE_2
+	sbp.set_border_width_all(1)
+	sbp.set_corner_radius_all(12)
+	sbp.set_content_margin_all(14)
+
 	start.add_theme_stylebox_override("normal",  sb)
 	start.add_theme_stylebox_override("hover",   sbh)
-	start.add_theme_stylebox_override("pressed", _pressed_sb())
+	start.add_theme_stylebox_override("pressed", sbp)
+	start.add_theme_stylebox_override("focus", sbh)
+	start.add_theme_color_override("font_color", ThemeManager.COL_TEXT)
+	start.add_theme_color_override("font_hover_color", ThemeManager.COL_TEXT)
 	start.pressed.connect(_on_start)
 	add_child(start)
 
-func _pressed_sb() -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = ThemeManager.COL_PURPLE_DK
-	sb.set_corner_radius_all(10)
-	sb.set_content_margin_all(16)
-	return sb
+func _toggle_mode() -> void:
+	mode = "clash" if mode == "br" else "br"
+	_update_mode_ui()
+	SFXSynthesizer.play_sound(self, "click", 0.0)
+
+func _update_mode_ui() -> void:
+	if mode == "br":
+		mode_label.text = "BATTLE ROYALE"
+		mode_sub_label.text = "Bermuda Island (Plane Drop)"
+		mode_label.add_theme_color_override("font_color", ThemeManager.COL_PURPLE_2)
+	else:
+		mode_label.text = "CLASH SQUAD"
+		mode_sub_label.text = "5v5 Tactical Skirmish"
+		mode_label.add_theme_color_override("font_color", ThemeManager.COL_PURPLE_2)
 
 func _on_start() -> void:
+	if sfx_player:
+		sfx_player.play()
 	GameManager.reset_match(mode)
+	await get_tree().create_timer(0.35).timeout
 	get_tree().change_scene_to_file("res://Scenes/BattleMap.tscn")
 
 # ============================ Toast ============================
@@ -468,10 +696,9 @@ func _build_toast() -> void:
 	toast = Label.new()
 	toast.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	toast.offset_top    = -68
-	toast.offset_bottom = -38
-	toast.add_theme_font_size_override("font_size", 16)
-	toast.add_theme_color_override("font_color", ThemeManager.COL_AMBER)
+	toast.offset_top = -68; toast.offset_bottom = -38
+	toast.add_theme_font_size_override("font_size", 17)
+	toast.add_theme_color_override("font_color", ThemeManager.COL_PURPLE_2)
 	toast.visible = false
 	add_child(toast)
 

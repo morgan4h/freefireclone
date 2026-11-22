@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="FreeFireClone"
-run/main_scene="uid://rpk1sgmpp10d"
+run/main_scene="res://Scenes/login_screen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -24,6 +24,7 @@ PlayerData="*res://autoloads/player_data.gd"
 
 [display]
 
+window/handheld/orientation=0
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 

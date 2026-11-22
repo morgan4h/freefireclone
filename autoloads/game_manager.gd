@@ -24,8 +24,16 @@ func _setup_input() -> void:
 	_add_key_action("reload",       [KEY_R])
 	_add_key_action("interact",      [KEY_E])
 	_add_key_action("toggle_mouse", [KEY_ESCAPE])
+	_add_key_action("eject",        [KEY_F, KEY_SPACE])
+	_add_key_action("slot_1",       [KEY_1])
+	_add_key_action("slot_2",       [KEY_2])
+	_add_key_action("slot_3",       [KEY_3])
+	_add_key_action("slot_4",       [KEY_4])
+	_add_key_action("gloo_wall",    [KEY_G])
 	_add_mouse_action("shoot",       [MOUSE_BUTTON_LEFT])
 	_add_mouse_action("aim",         [MOUSE_BUTTON_RIGHT])
+	_add_mouse_action("next_weapon", [MOUSE_BUTTON_WHEEL_DOWN])
+	_add_mouse_action("prev_weapon", [MOUSE_BUTTON_WHEEL_UP])
 
 func _add_key_action(action: String, keys: Array) -> void:
 	if not InputMap.has_action(action):

@@ -5,6 +5,8 @@ const SAVE_PATH := "user://player_data.cfg"
 const XP_PER_LEVEL := 500
 
 var username := "Guest"
+var selected_character := "purple"  # "purple" (Sofai), "red" (Crimson), "blue" (Cobalt)
+var selected_weapon := "ak47"       # "ak47", "mp40", "awm", "m1887"
 var coins := 1000
 var diamonds := 50
 var xp := 0
@@ -67,6 +69,8 @@ func xp_progress() -> float:
 func save_data() -> void:
 	var config := ConfigFile.new()
 	config.set_value("player", "username", username)
+	config.set_value("player", "selected_character", selected_character)
+	config.set_value("player", "selected_weapon", selected_weapon)
 	config.set_value("stats", "coins", coins)
 	config.set_value("stats", "diamonds", diamonds)
 	config.set_value("stats", "xp", xp)
@@ -85,6 +89,8 @@ func load_data() -> void:
 	if config.load(SAVE_PATH) != OK:
 		return
 	username = str(config.get_value("player", "username", username))
+	selected_character = str(config.get_value("player", "selected_character", selected_character))
+	selected_weapon = str(config.get_value("player", "selected_weapon", selected_weapon))
 	coins = int(config.get_value("stats", "coins", coins))
 	diamonds = int(config.get_value("stats", "diamonds", diamonds))
 	xp = int(config.get_value("stats", "xp", xp))
